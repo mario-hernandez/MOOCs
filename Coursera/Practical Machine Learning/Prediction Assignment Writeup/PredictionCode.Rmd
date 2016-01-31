@@ -1,0 +1,139 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Jose A. Ruiperez Valiente"
+date: "30 de enero de 2016"
+output: html_document
+---
+# Preliminar work
+
+## Background of the project
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## Required submissions
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+# Analysis
+
+## Preparing the work environment
+First we load the libraries, echo false to supress messages
+```{r, libraries}
+library(RCurl)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(reshape2)
+```
+
+Download data
+```{r, load data, cache=TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile="pml-training.csv",method="curl")
+training <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!", ""))
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",destfile="pml-testing.csv",method="curl")
+testing <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!", ""))
+```
+
+## Exploratory analysis and data cleaning
+Exploration of data.
+```{r, data exploration, eval=FALSE}
+summary(training)
+str(training)
+```
+What we learn after exploring data are three main things:
+1. Dataset contains many variables which are mostly NA's
+2. Dataset contains experiment-related variables such as id or timestamp that are not interesting for prediction purposes
+3. Dataset contains variables with near to zero variance, which may not be very informative taking into account that the datasets contains a wide amount of variables
+
+Thus I choose to remove all the previously mention variables
+
+First we remove variables that are not really interesting for o
+```{r, data cleaning}
+# Remove the first 7 variables which contain information related to the experiment
+training <- training[,-c(1:7)]
+
+# Removing Vars NA values
+variablesWithNA <- sapply(training, function (x) any(is.na(x) | x == ""))
+training <- training[, names(variablesWithNA[!variablesWithNA])]
+
+# Removing Near Zero Var (NZV)
+near.zero.vars <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[, !near.zero.vars$nzv]
+
+# Selected variables
+names(training)
+
+# Visualizing boxplot of the predictors per classe type
+variables <- names(training[,!names(training) %in% "classe"])
+v_per_plot = 14
+
+for(i in 1:ceiling(length(names(training))/v_per_plot))  # for each row
+{ 
+min <- 1 + (i-1)*v_per_plot
+max <- 1 + i*v_per_plot
+if (max > length(variables))
+{
+  max <- length(variables)
+}
+var_to_plot <- c(variables[min:max], "classe")
+
+p <- ggplot() + geom_violin(aes(y = value, x = classe, color = classe, fill=classe), data = melt(training[, var_to_plot], id.vars = "classe")) + facet_wrap(~ variable, ncol = 5)
+print(p)
+}
+```
+
+## Model
+```{r, prepare model}
+set.seed(591852)
+training$classe <- factor(training$classe)
+# Create training and validation set with 0.6 probability
+inTrain <- createDataPartition(training$classe, p=0.6)
+train_set <- training[inTrain[[1]],]
+validate_set <- training[-inTrain[[1]],]
+```
+
+```{r, model implementation}
+library(parallel)
+library(doParallel)
+cl <- makeCluster(detectCores() - 1)
+registerDoParallel(cl)
+
+ctrl <- trainControl(classProbs=TRUE, savePredictions=TRUE, allowParallel=TRUE)
+mod_rf <- train(classe ~ ., method="rf", data = train_set)
+stopCluster(cl)
+```
+
+## Validating the model
+```{r, validation}
+# Test on the train set with 100% accuracy
+confusionMatrix(predict(mod_rf, train_set), train_set$classe)
+# Test on the validation set with 99.25% accuracy
+confusionMatrix(predict(mod_rf, validate_set), validate_set$classe)
+```
+
+## Prediction of testing set and final model
+```{r, test}
+test_set <- testing[, names(testing) %in% names(training)]
+# Prediction of the testing dataset
+data.frame(testing[,1:6], classe_predicted = predict(mod_rf, test_set))
+# Importance of the variables
+varImp(mod_rf)
+# Log plot of the model
+plot(mod_rf, log="y")
+```
+
+## Conclusions
+- I use Random Forest as it is easy to use, performs well without almost no additional configuration, and its quite robust.
+- Train function in the Caret package already peforms automatically cross validation within the processing of the model, so we do not need to worry about that, the default paramerers suffice. 
+- I have been able to predict 20 samples correctly out of 20 of the testing set (100% accuracy).
