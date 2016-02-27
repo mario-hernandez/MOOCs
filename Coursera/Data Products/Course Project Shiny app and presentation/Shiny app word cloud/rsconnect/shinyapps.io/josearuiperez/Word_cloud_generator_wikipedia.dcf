@@ -1,0 +1,8 @@
+name: Word_cloud_generator_wikipedia
+account: josearuiperez
+server: shinyapps.io
+bundleId: 381982
+url: https://josearuiperez.shinyapps.io/Word_cloud_generator_wikipedia/
+when: 1456589103.37052
+asMultiple: FALSE
+asStatic: FALSE

@@ -1,0 +1,6 @@
+Title: Word cloud generator of Wikipedia terms
+Author: Jose A. Ruiperez Valiente
+License: MIT
+DisplayMode: Showcase
+Tags: wordcloud text-mining web-scraping wikipedia
+Type: Shiny
